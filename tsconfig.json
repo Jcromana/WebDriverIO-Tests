@@ -1,0 +1,13 @@
+{
+    "compilerOptions": {
+        "moduleResolution": "node",
+        "module": "NodeNext",
+        "target": "ESNext",
+        "types": [
+            "node",
+            "@wdio/globals/types",
+            "@wdio/cucumber-framework"
+        ],
+        "skipLibCheck": true
+    }
+}
