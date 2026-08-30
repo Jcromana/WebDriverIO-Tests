@@ -2,7 +2,6 @@ pipeline {
     agent {
         docker {
             image 'node:20'
-            // Mantenemos root para tener permisos de instalación de librerías
             args '-u root:root' 
         }
     }
@@ -10,7 +9,6 @@ pipeline {
     stages {
         stage('Preparar Entorno (Librerías y Java)') {
             steps {
-                // Instalamos las dependencias que necesitan Chrome y Allure
                 sh '''
                     apt-get update
                     apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 default-jre
@@ -39,8 +37,11 @@ pipeline {
     
     post {
         always {
-            echo 'Ejecución del pipeline terminada.'
-            // Aquí puedes añadir en el futuro el paso para publicar el reporte de Allure en Jenkins
+            // Genera el informe visual recogiendo la carpeta de resultados (asegúrate de que coincide con la ruta configurada en tu wdio.conf.ts, por lo general 'allure-results')
+            allure includeProperties: false, 
+                   jdk: '', 
+                   report: 'allure-report', 
+                   results: [[path: 'allure-results']]
         }
         success {
             echo '¡Las pruebas pasaron correctamente!'
