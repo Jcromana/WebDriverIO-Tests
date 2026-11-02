@@ -6,13 +6,8 @@ pipeline {
         }
     }
 
-    environment {
-        GIT_REPO_URL = 'https://github.com/Jcromana/WebDriverIO-Tests.git'
-        GH_PAGES_URL = 'https://jcromana.github.io/WebDriverIO-Tests/'
-    }
-
     stages {
-        stage('Preparar Entorno (Librerías, Java y Git)') {
+        stage('Preparar entorno') {
             steps {
                 sh '''
                     apt-get update
@@ -21,135 +16,146 @@ pipeline {
             }
         }
 
-        stage('Clonar Repositorio') {
+        stage('Clonar repo') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Instalar Dependencias de Node') {
+        stage('Instalar dependencias') {
             steps {
                 sh 'npm install'
             }
         }
 
-        stage('Ejecutar Tests WebDriverIO') {
+        stage('Ejecutar tests') {
             steps {
                 sh 'rm -rf allure-results allure-report'
                 sh 'npx wdio run wdio.conf.js'
             }
         }
 
-        stage('Generar Reporte Allure') {
+        stage('Generar reporte Allure') {
             steps {
                 sh '''
                     npx allure-commandline generate allure-results --single-file --clean -o allure-report
                 '''
             }
         }
-    }
 
-    post {
-        always {
-            script {
-                try {
-                    withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                        def buildNum = env.BUILD_NUMBER
-                        def buildResult = currentBuild.currentResult
+        stage('Publicar en GitHub Pages') {
+            steps {
+                withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                    sh """
+                        set -e
 
-                        sh """
-                            set -e
+                        git config --global user.name "Jenkins CI"
+                        git config --global user.email "jenkins@local"
 
-                            git config --global user.name "Jenkins CI"
-                            git config --global user.email "jenkins@local"
+                        rm -rf gh-pages-branch
+                        mkdir gh-pages-branch
+                        cd gh-pages-branch
 
-                            rm -rf gh-pages-branch
-                            mkdir gh-pages-branch
-                            cd gh-pages-branch
+                        git init
+                        git remote add origin https://${GITHUB_TOKEN}@github.com/Jcromana/WebDriverIO-Tests.git
 
-                            git init
-                            git remote add origin https://${GITHUB_TOKEN}@github.com/Jcromana/WebDriverIO-Tests.git
+                        if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+                            git fetch origin gh-pages
+                            git checkout gh-pages
+                        else
+                            git checkout --orphan gh-pages
+                        fi
 
-                            if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
-                                git fetch origin gh-pages
-                                git checkout gh-pages
-                            else
-                                git checkout --orphan gh-pages
-                            fi
+                        git rm -rf . --ignore-unmatch || true
 
-                            git rm -rf . --ignore-unmatch || true
+                        # Copiamos el reporte real a report.html
+                        cp ../allure-report/index.html ./report.html
 
-                            # Copiamos el reporte real a una ruta fija
-                            cp ../allure-report/index.html ./report.html
-
-                            # Añadimos un wrapper responsive para la raíz de GitHub Pages
-                            cat > index.html <<'EOF'
+                        # Página principal simple y responsive
+                        cat > index.html <<'EOF'
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title>WebDriverIO Report</title>
   <style>
-    html, body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      background: #0d1117;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      overflow: hidden;
-    }
     body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
       display: flex;
-      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
     }
-    iframe {
-      width: 100%;
-      height: 100vh;
-      border: 0;
-      background: #fff;
+    .container {
+      text-align: center;
+      padding: 24px;
+      max-width: 800px;
+      width: 90%;
+    }
+    h1 {
+      margin-bottom: 12px;
+      font-size: clamp(1.8rem, 4vw, 3rem);
+    }
+    p {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: #c9d1d9;
+    }
+    a {
+      display: inline-block;
+      margin-top: 18px;
+      background: #238636;
+      color: white;
+      text-decoration: none;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-weight: bold;
+    }
+    a:hover {
+      background: #2ea043;
     }
   </style>
 </head>
 <body>
-  <iframe src="./report.html" title="Allure Report"></iframe>
+  <div class="container">
+    <h1>Reporte WebDriverIO</h1>
+    <p>La página principal funciona correctamente y es responsive.</p>
+    <p>Haz clic para abrir el reporte generado por Allure.</p>
+    <a href="./report.html">Abrir reporte</a>
+  </div>
 </body>
 </html>
 EOF
 
-                            # Evita que GitHub Pages procese cosas raras
-                            touch .nojekyll
+                        touch .nojekyll
 
-                            # Caché busting para que el móvil no use una copia vieja
-                            echo "Build #${buildNum} - ${buildResult}" > version.txt
+                        echo "Build refreshed at $(date)" > version.txt
 
-                            git add .
-                            git commit -m "Deploy responsive report for build #${buildNum} (Status: ${buildResult})" || echo "No changes to commit"
-                            git push origin gh-pages
+                        git add .
+                        git commit -m "Deploy static landing page and Allure report" || echo "No changes to commit"
+                        git push origin gh-pages
 
-                            cd ..
-                            rm -rf gh-pages-branch
+                        cd ..
+                        rm -rf gh-pages-branch
 
-                            echo "Reporte publicado con éxito en GitHub Pages"
-                            echo "URL: ${GH_PAGES_URL}"
-                        """
-                    }
-                } catch (Exception e) {
-                    echo "No se pudo publicar en GitHub Pages: ${e.getMessage()}"
+                        echo "Publicado en GitHub Pages"
+                        echo "URL: https://jcromana.github.io/WebDriverIO-Tests/"
+                    """
                 }
             }
         }
+    }
 
+    post {
         success {
-            echo '¡Las pruebas pasaron correctamente!'
+            echo 'Pipeline completado correctamente'
         }
-
         failure {
-            echo 'Hubo un error en las pruebas. Revisa los logs.'
+            echo 'Pipeline falló'
         }
     }
 }
