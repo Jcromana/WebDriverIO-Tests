@@ -30,6 +30,8 @@ pipeline {
         
         stage('Ejecutar Tests WebDriverIO') {
             steps {
+                // Limpiar resultados antiguos del workspace antes de correr los tests
+                sh 'rm -rf allure-results allure-report'
                 sh 'npx wdio run wdio.conf.js'
             }
         }
@@ -37,12 +39,18 @@ pipeline {
     
     post {
         always {
-            // 1. Genera el informe Allure en un ÚNICO archivo HTML autocontenido (--single-file) apto para móviles
-            sh 'npx allure-commandline generate allure-results --single-file --clean -o allure-report'
-            
-            // 2. Publica automáticamente el reporte monolítico en la RAÍZ de GitHub Pages
+            // Asegurar que no quede historial previo y generar el reporte limpio en archivo único
             script {
-                echo 'Publicando reporte Allure autocontenido en la raíz de GitHub Pages...'
+                try {
+                    sh 'npx allure-commandline generate allure-results --single-file --clean -o allure-report'
+                } catch (Exception e) {
+                    echo "Error generando Allure: ${e.getMessage()}"
+                }
+            }
+            
+            // Publicar automáticamente el reporte limpio en la RAÍZ de GitHub Pages
+            script {
+                echo 'Publicando reporte Allure limpio en la raíz de GitHub Pages...'
                 try {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                         def buildNum = env.BUILD_NUMBER
@@ -74,7 +82,7 @@ pipeline {
                             echo "Build #${buildNum} - ${buildResult}" > version.txt
                             
                             git add .
-                            git commit -m "Deploy Allure single-file report for build #${buildNum} (Status: ${buildResult})" || echo "No changes to commit"
+                            git commit -m "Deploy clean Allure single-file report for build #${buildNum} (Status: ${buildResult})" || echo "No changes to commit"
                             git push origin gh-pages
                             
                             cd ..
