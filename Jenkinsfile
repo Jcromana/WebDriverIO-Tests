@@ -7,7 +7,7 @@ pipeline {
     }
 
     stages {
-        stage('Preparar entorno') {
+        stage('Preparar Entorno (Librerías, Java y Git)') {
             steps {
                 sh '''
                     apt-get update
@@ -16,63 +16,67 @@ pipeline {
             }
         }
 
-        stage('Clonar repo') {
+        stage('Clonar Repositorio') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Instalar dependencias') {
+        stage('Instalar Dependencias de Node') {
             steps {
                 sh 'npm install'
             }
         }
 
-        stage('Ejecutar tests') {
+        stage('Ejecutar Tests WebDriverIO') {
             steps {
                 sh 'rm -rf allure-results allure-report'
                 sh 'npx wdio run wdio.conf.js'
             }
         }
 
-        stage('Generar reporte Allure') {
+        stage('Generar Reporte Allure') {
             steps {
                 sh '''
                     npx allure-commandline generate allure-results --single-file --clean -o allure-report
                 '''
             }
         }
+    }
 
-        stage('Publicar en GitHub Pages') {
-            steps {
-                withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                    sh """
-                        set -e
+    post {
+        always {
+            script {
+                try {
+                    withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                        def buildNum = env.BUILD_NUMBER
+                        def buildResult = currentBuild.currentResult
 
-                        git config --global user.name "Jenkins CI"
-                        git config --global user.email "jenkins@local"
+                        sh '''
+                            set -e
 
-                        rm -rf gh-pages-branch
-                        mkdir gh-pages-branch
-                        cd gh-pages-branch
+                            git config --global user.name "Jenkins CI"
+                            git config --global user.email "jenkins@local"
 
-                        git init
-                        git remote add origin https://${GITHUB_TOKEN}@github.com/Jcromana/WebDriverIO-Tests.git
+                            rm -rf gh-pages-branch
+                            mkdir gh-pages-branch
+                            cd gh-pages-branch
 
-                        if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
-                            git fetch origin gh-pages
-                            git checkout gh-pages
-                        else
-                            git checkout --orphan gh-pages
-                        fi
+                            git init
+                            git remote add origin "https://$GITHUB_TOKEN@github.com/Jcromana/WebDriverIO-Tests.git"
 
-                        git rm -rf . --ignore-unmatch || true
+                            if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+                                git fetch origin gh-pages
+                                git checkout gh-pages
+                            else
+                                git checkout --orphan gh-pages
+                            fi
 
-                        # Copiamos el reporte real a report.html
-                        cp ../allure-report/index.html ./report.html
+                            git rm -rf . --ignore-unmatch || true
 
-                        # Página principal simple y responsive
-                        cat > index.html <<'EOF'
+                            cp ../allure-report/index.html ./report.html
+
+                            cat > index.html <<'EOF'
 <!doctype html>
 <html lang="es">
 <head>
@@ -97,13 +101,12 @@ pipeline {
       width: 90%;
     }
     h1 {
-      margin-bottom: 12px;
       font-size: clamp(1.8rem, 4vw, 3rem);
+      margin-bottom: 12px;
     }
     p {
-      font-size: 1rem;
-      line-height: 1.6;
       color: #c9d1d9;
+      line-height: 1.6;
     }
     a {
       display: inline-block;
@@ -123,7 +126,7 @@ pipeline {
 <body>
   <div class="container">
     <h1>Reporte WebDriverIO</h1>
-    <p>La página principal funciona correctamente y es responsive.</p>
+    <p>La página principal es responsive y funciona en móvil.</p>
     <p>Haz clic para abrir el reporte generado por Allure.</p>
     <a href="./report.html">Abrir reporte</a>
   </div>
@@ -131,31 +134,32 @@ pipeline {
 </html>
 EOF
 
-                        touch .nojekyll
+                            touch .nojekyll
+                            echo "Build #''' + buildNum + ''' - ''' + buildResult + '''" > version.txt
 
-                        echo "Build refreshed at $(date)" > version.txt
+                            git add .
+                            git commit -m "Deploy responsive report for build #''' + buildNum + ''' (Status: ''' + buildResult + ''')" || echo "No changes to commit"
+                            git push origin gh-pages
 
-                        git add .
-                        git commit -m "Deploy static landing page and Allure report" || echo "No changes to commit"
-                        git push origin gh-pages
+                            cd ..
+                            rm -rf gh-pages-branch
 
-                        cd ..
-                        rm -rf gh-pages-branch
-
-                        echo "Publicado en GitHub Pages"
-                        echo "URL: https://jcromana.github.io/WebDriverIO-Tests/"
-                    """
+                            echo "Reporte publicado correctamente"
+                            echo "URL: https://jcromana.github.io/WebDriverIO-Tests/"
+                        '''
+                    }
+                } catch (Exception e) {
+                    echo "No se pudo publicar en GitHub Pages: ${e.getMessage()}"
                 }
             }
         }
-    }
 
-    post {
         success {
-            echo 'Pipeline completado correctamente'
+            echo '¡Las pruebas pasaron correctamente!'
         }
+
         failure {
-            echo 'Pipeline falló'
+            echo 'Hubo un error en las pruebas. Revisa los logs.'
         }
     }
 }
