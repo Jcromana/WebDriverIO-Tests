@@ -37,15 +37,12 @@ pipeline {
     
     post {
         always {
-            // 1. Genera el informe visual de Allure
-            allure includeProperties: false, 
-                   jdk: '', 
-                   report: 'allure-report', 
-                   results: [[path: 'allure-results']]
+            // 1. Genera el informe Allure en un ÚNICO archivo HTML autocontenido (--single-file) apto para móviles
+            sh 'npx allure-commandline generate allure-results --single-file --clean -o allure-report'
             
-            // 2. Publica automáticamente el reporte en la RAÍZ de GitHub Pages
+            // 2. Publica automáticamente el reporte monolítico en la RAÍZ de GitHub Pages
             script {
-                echo 'Publicando reporte Allure en la raíz de GitHub Pages...'
+                echo 'Publicando reporte Allure autocontenido en la raíz de GitHub Pages...'
                 try {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                         def buildNum = env.BUILD_NUMBER
@@ -70,14 +67,14 @@ pipeline {
                             # Limpiar archivos anteriores de la rama por completo
                             rm -rf *
                             
-                            # Copiar todo el contenido de Allure directamente en la raíz
-                            cp -r ../allure-report/* .
+                            # Copiar el archivo único index.html generado por Allure a la raíz
+                            cp ../allure-report/index.html .
                             
-                            # Crear un archivo de prueba para verificar versión y evitar caché estricta
+                            # Crear un archivo de control para forzar la invalidación de caché
                             echo "Build #${buildNum} - ${buildResult}" > version.txt
                             
                             git add .
-                            git commit -m "Deploy Allure report for build #${buildNum} (Status: ${buildResult})" || echo "No changes to commit"
+                            git commit -m "Deploy Allure single-file report for build #${buildNum} (Status: ${buildResult})" || echo "No changes to commit"
                             git push origin gh-pages
                             
                             cd ..
