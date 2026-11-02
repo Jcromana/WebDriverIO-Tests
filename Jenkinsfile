@@ -76,6 +76,8 @@ pipeline {
                             
                             RELEASE_ID=$(echo $CREATE_RESPONSE | grep -o '"id":[0-9]*' | head -n 1 | cut -d':' -f2)
                             
+                            RELEASE_ID=$(echo $CREATE_RESPONSE | grep -o '"id":[[:space:]]*[0-9]*' | head -n 1 | grep -o '[0-9]*')
+                            
                             if [ -z "$RELEASE_ID" ]; then
                                 echo "Error al crear la Release en GitHub."
                                 exit 1
