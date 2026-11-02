@@ -45,57 +45,64 @@ pipeline {
             
             // 2. Sube el reporte a GitHub siempre (tanto si pasa como si falla)
             script {
-    echo 'Subiendo reporte Allure a GitHub...'
-    try {
-        withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-            // Definimos el JSON usando comillas triples de Groovy para evitar problemas de escape en el shell
-            def jsonBody = """{
-                "tag_name": "build-${env.BUILD_NUMBER}",
-                "name": "Reporte Allure - Build #${env.BUILD_NUMBER} (Estado: ${currentBuild.currentResult})",
-                "body": "Reporte de ejecución generado automáticamente desde Jenkins local. Resultado de la build: ${currentBuild.currentResult}.",
-                "draft": false,
-                "prerelease": false
-            }"""
-            
-            // Guardamos el JSON en una variable de entorno para pasarlo seguro al script sh
-            env.JSON_PAYLOAD = jsonBody
+                echo 'Subiendo reporte Allure a GitHub (Bloque Always)...'
+                try {
+                    withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                        // Definimos el JSON fuera del sh usando Groovy para evitar problemas de escape
+                        def jsonBody = """{
+                            "tag_name": "build-${env.BUILD_NUMBER}",
+                            "name": "Reporte Allure - Build #${env.BUILD_NUMBER} (Estado: ${currentBuild.currentResult})",
+                            "body": "Reporte de ejecución generado automáticamente desde Jenkins local. Resultado de la build: ${currentBuild.currentResult}.",
+                            "draft": false,
+                            "prerelease": false
+                        }"""
+                        
+                        env.JSON_PAYLOAD = jsonBody
 
-            sh '''
-                # 1. Comprimir la carpeta del reporte generado
-                zip -r allure-report.zip allure-report/
-                
-                TAG_NAME="build-${BUILD_NUMBER}"
-                REPO="Jcromana/WebDriverIO-Tests"
-                
-                echo "Creando Release en GitHub para la versión ${TAG_NAME}..."
-                
-                # 2. Crear la Release usando el JSON en la variable de entorno
-                CREATE_RESPONSE=$(curl -s -X POST \
-                    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                    -H "Accept: application/vnd.github+json" \
-                    https://api.github.com/repos/${REPO}/releases \
-                    -d "$JSON_PAYLOAD")
-                
-                RELEASE_ID=$(echo $CREATE_RESPONSE | grep -o '"id":[0-9]*' | head -n 1 | cut -d':' -f2)
-                
-                if [ -z "$RELEASE_ID" ]; then
-                    echo "Error al crear la Release en GitHub."
-                    exit 1
-                fi
-                
-                echo "Subiendo allure-report.zip a la Release ID: ${RELEASE_ID}..."
-                
-                curl -s -X POST \
-                    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                    -H "Content-Type: application/zip" \
-                    -H "Accept: application/vnd.github+json" \
-                    --data-binary "@allure-report.zip" \
-                    https://uploads.github.com/repos/${REPO}/releases/${RELEASE_ID}/assets?name=allure-report-${BUILD_NUMBER}.zip
-                    
-                echo "¡Reporte subido con éxito a GitHub!"
-            '''
+                        sh '''
+                            # Comprimir la carpeta del reporte generado
+                            zip -r allure-report.zip allure-report/
+                            
+                            TAG_NAME="build-${BUILD_NUMBER}"
+                            REPO="Jcromana/WebDriverIO-Tests"
+                            
+                            echo "Creando Release en GitHub para la versión ${TAG_NAME}..."
+                            
+                            CREATE_RESPONSE=$(curl -s -X POST \
+                                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                                -H "Accept: application/vnd.github+json" \
+                                https://api.github.com/repos/${REPO}/releases \
+                                -d "$JSON_PAYLOAD")
+                            
+                            RELEASE_ID=$(echo $CREATE_RESPONSE | grep -o '"id":[0-9]*' | head -n 1 | cut -d':' -f2)
+                            
+                            if [ -z "$RELEASE_ID" ]; then
+                                echo "Error al crear la Release en GitHub."
+                                exit 1
+                            fi
+                            
+                            echo "Subiendo allure-report.zip a la Release ID: ${RELEASE_ID}..."
+                            
+                            curl -s -X POST \
+                                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                                -H "Content-Type: application/zip" \
+                                -H "Accept: application/vnd.github+json" \
+                                --data-binary "@allure-report.zip" \
+                                https://uploads.github.com/repos/${REPO}/releases/${RELEASE_ID}/assets?name=allure-report-${BUILD_NUMBER}.zip
+                                
+                            echo "¡Reporte subido con éxito a GitHub!"
+                        '''
+                    }
+                } catch (Exception e) {
+                    echo "No se pudo subir el reporte a GitHub: ${e.getMessage()}"
+                }
+            }
         }
-    } catch (Exception e) {
-        echo "No se pudo subir el reporte a GitHub: ${e.getMessage()}"
+        success {
+            echo '¡Las pruebas pasaron correctamente!'
+        }
+        failure {
+            echo 'Hubo un error en las pruebas. Revisa los logs.'
+        }
     }
 }
