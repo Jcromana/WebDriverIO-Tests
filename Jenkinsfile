@@ -67,11 +67,14 @@ pipeline {
                             # Intentar descargar la rama gh-pages existente, si no existe se crea desde cero
                             git fetch origin gh-pages && git checkout gh-pages || git checkout -b gh-pages
                             
-                            # Limpiar archivos anteriores de la rama para mantener la raíz siempre limpia con la última build
+                            # Limpiar archivos anteriores de la rama por completo
                             rm -rf *
                             
                             # Copiar todo el contenido de Allure directamente en la raíz
                             cp -r ../allure-report/* .
+                            
+                            # Crear un archivo de prueba para verificar versión y evitar caché estricta
+                            echo "Build #${buildNum} - ${buildResult}" > version.txt
                             
                             git add .
                             git commit -m "Deploy Allure report for build #${buildNum} (Status: ${buildResult})" || echo "No changes to commit"
