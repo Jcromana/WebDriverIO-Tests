@@ -7,11 +7,11 @@ pipeline {
     }
     
     stages {
-        stage('Preparar Entorno (Librerías y Java)') {
+        stage('Preparar Entorno (Librerías, Java y Git)') {
             steps {
                 sh '''
                     apt-get update
-                    apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 default-jre zip
+                    apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 default-jre git
                 '''
             }
         }
@@ -43,60 +43,47 @@ pipeline {
                    report: 'allure-report', 
                    results: [[path: 'allure-results']]
             
-            // 2. Sube el reporte a GitHub siempre (tanto si pasa como si falla)
+            // 2. Publica automáticamente el reporte en GitHub Pages
             script {
-                echo 'Subiendo reporte Allure a GitHub (Bloque Always)...'
+                echo 'Publicando reporte Allure en GitHub Pages...'
                 try {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                        // Definimos el JSON fuera del sh usando Groovy para evitar problemas de escape
-                        def jsonBody = """{
-                            "tag_name": "build-${env.BUILD_NUMBER}",
-                            "name": "Reporte Allure - Build #${env.BUILD_NUMBER} (Estado: ${currentBuild.currentResult})",
-                            "body": "Reporte de ejecución generado automáticamente desde Jenkins local. Resultado de la build: ${currentBuild.currentResult}.",
-                            "draft": false,
-                            "prerelease": false
-                        }"""
-                        
-                        env.JSON_PAYLOAD = jsonBody
-
                         sh '''
-                            # Comprimir la carpeta del reporte generado
-                            zip -r allure-report.zip allure-report/
+                            # Configurar identidad de Git en el contenedor
+                            git config --global user.name "Jenkins CI"
+                            git config --global user.email "jenkins@local"
                             
-                            TAG_NAME="build-${BUILD_NUMBER}"
-                            REPO="Jcromana/WebDriverIO-Tests"
+                            # Preparar un directorio temporal limpio
+                            rm -rf gh-pages-branch
+                            mkdir gh-pages-branch
+                            cd gh-pages-branch
                             
-                            echo "Creando Release en GitHub para la versión ${TAG_NAME}..."
+                            git init
+                            git remote add origin https://${GITHUB_TOKEN}@github.com/Jcromana/WebDriverIO-Tests.git
                             
-                            CREATE_RESPONSE=$(curl -s -X POST \
-                                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                                -H "Accept: application/vnd.github+json" \
-                                https://api.github.com/repos/${REPO}/releases \
-                                -d "$JSON_PAYLOAD")
+                            # Intentar descargar la rama gh-pages existente, si no existe se crea desde cero
+                            git fetch origin gh-pages && git checkout gh-pages || git checkout -b gh-pages
                             
-                            RELEASE_ID=$(echo $CREATE_RESPONSE | grep -o '"id":[0-9]*' | head -n 1 | cut -d':' -f2)
+                            # Crear carpeta histórica para esta build específica
+                            mkdir -p builds/build-${BUILD_NUMBER}
+                            cp -r ../allure-report/* builds/build-${BUILD_NUMBER}/
                             
-                            RELEASE_ID=$(echo $CREATE_RESPONSE | grep -o '"id":[[:space:]]*[0-9]*' | head -n 1 | grep -o '[0-9]*')
+                            # Actualizar la página de inicio para que redirija a la última build
+                            echo "<meta http-equiv=\"refresh\" content=\"0; url=builds/build-${BUILD_NUMBER}/index.html\">" > index.html
                             
-                            if [ -z "$RELEASE_ID" ]; then
-                                echo "Error al crear la Release en GitHub."
-                                exit 1
-                            fi
+                            git add .
+                            git commit -m "Deploy Allure report for build #${BUILD_NUMBER} (Status: ${currentBuild.currentResult})" || echo "No changes to commit"
+                            git push origin gh-pages
                             
-                            echo "Subiendo allure-report.zip a la Release ID: ${RELEASE_ID}..."
+                            cd ..
+                            rm -rf gh-pages-branch
                             
-                            curl -s -X POST \
-                                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                                -H "Content-Type: application/zip" \
-                                -H "Accept: application/vnd.github+json" \
-                                --data-binary "@allure-report.zip" \
-                                https://uploads.github.com/repos/${REPO}/releases/${RELEASE_ID}/assets?name=allure-report-${BUILD_NUMBER}.zip
-                                
-                            echo "¡Reporte subido con éxito a GitHub!"
+                            echo "¡Reporte publicado con éxito en GitHub Pages!"
+                            echo "Podrás verlo en: https://jcromana.github.io/WebDriverIO-Tests/builds/build-${BUILD_NUMBER}/"
                         '''
                     }
                 } catch (Exception e) {
-                    echo "No se pudo subir el reporte a GitHub: ${e.getMessage()}"
+                    echo "No se pudo publicar en GitHub Pages: ${e.getMessage()}"
                 }
             }
         }
