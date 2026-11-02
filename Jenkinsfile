@@ -68,8 +68,20 @@ pipeline {
                             mkdir -p builds/build-${BUILD_NUMBER}
                             cp -r ../allure-report/* builds/build-${BUILD_NUMBER}/
                             
-                            # Actualizar la página de inicio para que redirija a la última build
-                            echo "<meta http-equiv=\"refresh\" content=\"0; url=builds/build-${BUILD_NUMBER}/index.html\">" > index.html
+                            # Actualizar la página de inicio protegida con comillas simples para evitar errores de shell
+                            cat << 'EOF' > index.html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="0; url=builds/build-${BUILD_NUMBER}/index.html">
+    <title>Redirecting to Allure Report</title>
+</head>
+<body>
+    <p>Redirigiendo al último reporte de Allure... <a href="builds/build-${BUILD_NUMBER}/index.html">Pulsa aquí si no redirige automáticamente</a>.</p>
+</body>
+</html>
+EOF
                             
                             git add .
                             git commit -m "Deploy Allure report for build #${BUILD_NUMBER} (Status: ${currentBuild.currentResult})" || echo "No changes to commit"
