@@ -43,9 +43,9 @@ pipeline {
                    report: 'allure-report', 
                    results: [[path: 'allure-results']]
             
-            // 2. Publica automáticamente el reporte en GitHub Pages
+            // 2. Publica automáticamente el reporte en la RAÍZ de GitHub Pages
             script {
-                echo 'Publicando reporte Allure en GitHub Pages...'
+                echo 'Publicando reporte Allure en la raíz de GitHub Pages...'
                 try {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                         def buildNum = env.BUILD_NUMBER
@@ -67,22 +67,11 @@ pipeline {
                             # Intentar descargar la rama gh-pages existente, si no existe se crea desde cero
                             git fetch origin gh-pages && git checkout gh-pages || git checkout -b gh-pages
                             
-                            # Crear carpeta histórica para esta build específica
-                            mkdir -p builds/build-${buildNum}
-                            cp -r ../allure-report/* builds/build-${buildNum}/
+                            # Limpiar archivos anteriores de la rama para mantener la raíz siempre limpia con la última build
+                            rm -rf *
                             
-                            # Crear el index.html de redirección de forma segura línea por línea
-                            echo '<!DOCTYPE html>' > index.html
-                            echo '<html>' >> index.html
-                            echo '<head>' >> index.html
-                            echo '    <meta charset="utf-8">' >> index.html
-                            echo '    <meta http-equiv="refresh" content="0; url=builds/build-${buildNum}/index.html">' >> index.html
-                            echo '    <title>Redirecting to Allure Report</title>' >> index.html
-                            echo '</head>' >> index.html
-                            echo '<body>' >> index.html
-                            echo '    <p>Redirigiendo al último reporte de Allure... <a href="builds/build-${buildNum}/index.html">Pulsa aquí si no redirige automáticamente</a>.</p>' >> index.html
-                            echo '</body>' >> index.html
-                            echo '</html>' >> index.html
+                            # Copiar todo el contenido de Allure directamente en la raíz
+                            cp -r ../allure-report/* .
                             
                             git add .
                             git commit -m "Deploy Allure report for build #${buildNum} (Status: ${buildResult})" || echo "No changes to commit"
@@ -91,8 +80,8 @@ pipeline {
                             cd ..
                             rm -rf gh-pages-branch
                             
-                            echo "¡Reporte publicado con éxito en GitHub Pages!"
-                            echo "Podrás verlo en: https://jcromana.github.io/WebDriverIO-Tests/builds/build-${buildNum}/"
+                            echo "¡Reporte publicado con éxito en la raíz!"
+                            echo "Podrás verlo en: https://jcromana.github.io/WebDriverIO-Tests/"
                         """
                     }
                 } catch (Exception e) {
