@@ -11,7 +11,7 @@ pipeline {
             steps {
                 sh '''
                     apt-get update
-                    apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 default-jre
+                    apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 default-jre zip
                 '''
             }
         }
@@ -37,14 +37,57 @@ pipeline {
     
     post {
         always {
-            // Genera el informe visual recogiendo la carpeta de resultados (asegúrate de que coincide con la ruta configurada en tu wdio.conf.ts, por lo general 'allure-results')
+            // Genera el informe visual recogiendo la carpeta de resultados
             allure includeProperties: false, 
                    jdk: '', 
                    report: 'allure-report', 
                    results: [[path: 'allure-results']]
         }
         success {
-            echo '¡Las pruebas pasaron correctamente!'
+            echo '¡Las pruebas pasaron correctamente! Subiendo reporte a GitHub...'
+            script {
+                withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                    sh '''
+                        # 1. Comprimir la carpeta del reporte generado por Allure
+                        zip -r allure-report.zip allure-report/
+                        
+                        TAG_NAME="build-${BUILD_NUMBER}"
+                        REPO="Jcromana/WebDriverIO-Tests"
+                        
+                        echo "Creando Release en GitHub para la versión ${TAG_NAME}..."
+                        
+                        CREATE_RESPONSE=$(curl -s -X POST \
+                            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                            -H "Accept: application/vnd.github+json" \
+                            https://api.github.com/repos/${REPO}/releases \
+                            -d "{
+                                \\\"tag_name\\\": \\\"${TAG_NAME}\\\",
+                                \\\"name\\\": \\\"Reporte Allure - Build #${BUILD_NUMBER}\\\",
+                                \\\"body\\\": \\\"Reporte de ejecución generado automáticamente desde Jenkins local.\\\",
+                                \\\"draft\\\": false,
+                                \\\"prerelease\\\": false
+                            }")
+                        
+                        RELEASE_ID=$(echo $CREATE_RESPONSE | grep -o '"id":[0-9]*' | head -n 1 | cut -d':' -f2)
+                        
+                        if [ -z "$RELEASE_ID" ]; then
+                            echo "Error al crear la Release en GitHub."
+                            exit 1
+                        fi
+                        
+                        echo "Subiendo allure-report.zip a la Release ID: ${RELEASE_ID}..."
+                        
+                        curl -s -X POST \
+                            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                            -H "Content-Type: application/zip" \
+                            -H "Accept: application/vnd.github+json" \
+                            --data-binary "@allure-report.zip" \
+                            https://uploads.github.com/repos/${REPO}/releases/${RELEASE_ID}/assets?name=allure-report-${BUILD_NUMBER}.zip
+                            
+                        echo "¡Reporte subido con éxito a GitHub!"
+                    '''
+                }
+            }
         }
         failure {
             echo 'Hubo un error en las pruebas. Revisa los logs.'
