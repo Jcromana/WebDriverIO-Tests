@@ -48,7 +48,10 @@ pipeline {
                 echo 'Publicando reporte Allure en GitHub Pages...'
                 try {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                        sh '''
+                        def buildNum = env.BUILD_NUMBER
+                        def buildResult = currentBuild.currentResult
+
+                        sh """
                             # Configurar identidad de Git en el contenedor
                             git config --global user.name "Jenkins CI"
                             git config --global user.email "jenkins@local"
@@ -65,34 +68,32 @@ pipeline {
                             git fetch origin gh-pages && git checkout gh-pages || git checkout -b gh-pages
                             
                             # Crear carpeta histórica para esta build específica
-                            mkdir -p builds/build-${BUILD_NUMBER}
-                            cp -r ../allure-report/* builds/build-${BUILD_NUMBER}/
+                            mkdir -p builds/build-${buildNum}
+                            cp -r ../allure-report/* builds/build-${buildNum}/
                             
-                            # Actualizar la página de inicio protegida con comillas simples para evitar errores de shell
-                            cat << 'EOF' > index.html
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta http-equiv="refresh" content="0; url=builds/build-${BUILD_NUMBER}/index.html">
-    <title>Redirecting to Allure Report</title>
-</head>
-<body>
-    <p>Redirigiendo al último reporte de Allure... <a href="builds/build-${BUILD_NUMBER}/index.html">Pulsa aquí si no redirige automáticamente</a>.</p>
-</body>
-</html>
-EOF
+                            # Crear el index.html de redirección de forma segura línea por línea
+                            echo '<!DOCTYPE html>' > index.html
+                            echo '<html>' >> index.html
+                            echo '<head>' >> index.html
+                            echo '    <meta charset="utf-8">' >> index.html
+                            echo '    <meta http-equiv="refresh" content="0; url=builds/build-${buildNum}/index.html">' >> index.html
+                            echo '    <title>Redirecting to Allure Report</title>' >> index.html
+                            echo '</head>' >> index.html
+                            echo '<body>' >> index.html
+                            echo '    <p>Redirigiendo al último reporte de Allure... <a href="builds/build-${buildNum}/index.html">Pulsa aquí si no redirige automáticamente</a>.</p>' >> index.html
+                            echo '</body>' >> index.html
+                            echo '</html>' >> index.html
                             
                             git add .
-                            git commit -m "Deploy Allure report for build #${BUILD_NUMBER} (Status: ${currentBuild.currentResult})" || echo "No changes to commit"
+                            git commit -m "Deploy Allure report for build #${buildNum} (Status: ${buildResult})" || echo "No changes to commit"
                             git push origin gh-pages
                             
                             cd ..
                             rm -rf gh-pages-branch
                             
                             echo "¡Reporte publicado con éxito en GitHub Pages!"
-                            echo "Podrás verlo en: https://jcromana.github.io/WebDriverIO-Tests/builds/build-${BUILD_NUMBER}/"
-                        '''
+                            echo "Podrás verlo en: https://jcromana.github.io/WebDriverIO-Tests/builds/build-${buildNum}/"
+                        """
                     }
                 } catch (Exception e) {
                     echo "No se pudo publicar en GitHub Pages: ${e.getMessage()}"
